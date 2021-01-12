@@ -1,0 +1,537 @@
+#include  <msp430xG46x.h>
+
+            NAME main
+            PUBLIC       main,cmd, resistor,time,sample,display0,display1,print,Vr,Rfinel1 Rfinel2,num,Vdelta,Cfinel1,Cfinel2,acc,Lfinel1,Lfinel2,two_thirds
+            EXTERN       wait,lcd_strobe,lcd_cmd,lcd_data,lcd_write,sleep_mood, make_sringR,make_sringC,make_sringL
+            EXTERN       Farad,Henry,Ohm
+
+;-------------------------------------------------------------------------------
+            ORG     0x1100                  ; Begins a RAM segment
+;-------------------------------------------------------------------------------
+state       DW   0
+two_thirds  DW   0
+lcd         DW   0
+counter     DW   0
+resistor    DW   0
+time        DW   0
+indictor    DW   1
+sample      DW   0
+display0    DW   0
+display1    DW   0
+print       DW   "                                "
+Vr          DW   0   
+acc         DW   0
+Vdelta      DW   0
+line_0      DW  "Welcome to     RLC check :)      "
+line_02     DW  "1.Please choose option 2_3_4_5   "
+line_1      DW  "2. Resistor     check, --->       "
+line_10     DW  "Plug the resistor in series -->  "
+line_11     DW  "move switch 0  to start         "
+line_2      DW  "3.Capacitor     check,    ---->"
+line_20     DW  "Plug the cap & 12.5k R in series->  "
+line_3      DW  "4.Inductor check,    ----->     "
+line_30     DW  "Plug the Inductor in parallel -> "
+line_4      DW  "5.quit"
+keypad      DW   "             "  
+Rfinel1     DW  "R="
+Rfinel2     DW  "Vr="
+Cfinel1     DW  "C="
+Cfinel2     DW  "time="
+Lfinel1     DW  "L="
+Lfinel2     DW  "time="
+num         DW  "               "
+cmd         DB   0
+
+;-------------------------------------------------------------------------------
+            RSEG    CSTACK                  ; Begins a relocatable segment name of CSTACK - Define stack segment
+;-------------------------------------------------------------------------------
+            RSEG    CODE                    ; Assemble to Flash memory -like void main in C
+;-----------------------------------------------------------------------------
+main        mov.w   #SFE(CSTACK),SP         ; Initialize stackpointer
+StopWDT     mov.w   #WDTPW+WDTHOLD,&WDTCTL  ; Stop WDT
+SetupFLL    bis.b   #XCAP14PF,&FLL_CTL0     ; Configure load caps
+
+;------------------------------------------------------------------------------------------ 
+;       set ups 
+;------------------------------------------------------------------------------------------  
+
+
+Setup_ports  mov.b   #0x00,&P2SEL     // prots to PUHS BUTTON
+             mov.b   #0x00,&P2DIR     // prots to PUHS BUTTON
+             mov.b   #0x30,&P2IES     // prots to PUHS BUTTON
+             bis.b   #0xff,&P2IE      // prots to PUHS BUTTON
+             bic.b   #0xff,&P2IFG     // prots to PUHS BUTTON
+             
+             mov.b   #0x00,&P1SEL     // prots to KEY PAD INTERPUT
+             mov.b   #0x00,&P1DIR     // prots to KEY PAD INTERPUT
+             mov.b   #0x00,&P1IES     // prots to KEY PAD INTERPUT
+             bis.b   #0xff,&P1IE      // prots to KEY PAD INTERPUT
+             bic.b   #0xff,&P1IFG     // prots to KEY PAD INTERPUT
+             
+             mov.b   #0x00,&P10SEL     // prots to KEY PAD READ
+             mov.b   #0x0f,&P10DIR     // prots to KEY PAD READ
+             mov.b   #0x00,&P10OUT     // prots to KEY PAD READ
+             
+             mov.b   #0x00,&P4SEL     // prots to LCD DATA
+             mov.b   #0xFF,&P4DIR     // prots to LCD DATA
+             
+             mov.b   #0x00,&P5SEL     // prots to LCD CONTROL
+             mov.b   #0x07,&P5DIR     // prots to LCD CONTROL, P5.0 IS RS, P5.1 IS R/W , P5.2 IS E
+             
+             mov.b   #0x00,&P1SEL
+             mov.b   #0x00,&P1DIR
+             mov.b   #0x30,&P1IES
+             bis.b   #0x70,&P1IE
+             bic.b   #0xff,&P1IFG
+             
+             bis.b   #0x08,&P6SEL             ; Enable ADC channel A3
+             
+             bic.b   #0x80,&P6SEL             // p6.7 for [v]
+             bic.b   #0x80,&P6DIR
+             
+             bis   #DAC12AMP_1,&DAC12_1CTL
+             
+            
+              
+Setup_stete  mov     #0,state 
+             mov     #0,lcd  
+        
+Setup_lcd    mov.b  #0x00,&P5OUT 
+             mov.w  #15729,R15     
+             call   #wait
+             call   #lcd_strobe
+             mov.w  #52483,R15     
+             call   #wait
+             mov.b  #0x3f,&P4OUT
+             call   #lcd_strobe
+             mov.w  #210,R15     
+             call   #wait
+             mov.b  #0x3f,&P4OUT
+             call   #lcd_strobe
+             mov.b  #0x3c,cmd
+             call   #lcd_cmd
+             mov.b  #0x0f,cmd
+             call   #lcd_cmd
+             mov.b  #0x01,cmd
+             call   #lcd_cmd
+             mov.b  #0x06,cmd
+             call   #lcd_cmd
+             mov.b  #0x80,cmd
+             call   #lcd_cmd
+             mov.b  #0x02,cmd
+             call   #lcd_cmd
+
+
+;------------------------------------------------------------------------------------------ 
+;            LCD print mood
+;------------------------------------------------------------------------------------------  
+
+Mainloop    bic.b   #0xff,&P2IE 
+            mov.w   #SFE(CSTACK),SP  
+            mov.w   #1,indictor
+            cmp     #0,lcd
+            jnz     line1
+            mov     #line_0,R5
+            call    #lcd_write
+            call    #sleep_mood
+            mov.b   #BTDIV+BT_fCLK2_DIV64,&BTCTL // START delay
+            bis.w   #LPM3+GIE,SR
+            mov     #line_02,R5
+            call    #lcd_write
+            jmp     subloop
+line1       cmp     #1,lcd
+            jnz     line2
+            cmp     #0,state
+            jnz     line11
+            mov     #line_1,R5
+            call    #lcd_write
+            call    #sleep_mood
+            mov.b   #BTDIV+BT_fCLK2_DIV64,&BTCTL // START delay
+            bis.w   #LPM3+GIE,SR
+            jmp     subloop
+line11      cmp     #1,state
+            jnz     line12
+            mov     #line_10,R5
+            call    #lcd_write
+            jmp     subloop
+line12      mov     #line_11,R5
+            call    #lcd_write 
+            jmp     subloop
+line2       cmp     #2,lcd
+            jnz     line3
+            cmp     #0,state
+            jnz     line21
+            mov     #line_2,R5
+            call    #lcd_write
+            mov.b   #BTDIV+BT_fCLK2_DIV64,&BTCTL // START delay
+            call    #sleep_mood
+            bis.w   #LPM3+GIE,SR
+            jmp     subloop
+line21      cmp     #1,state
+            jnz     line22
+            mov     #line_20,R5
+            call    #lcd_write
+            jmp     subloop
+line22       mov     #line_11,R5
+            call    #lcd_write 
+            jmp     subloop
+line3       cmp     #3,lcd
+            jnz     line4
+            cmp     #0,state
+            jnz     line31
+            mov     #line_3,R5
+            call    #lcd_write
+            mov.b   #BTDIV+BT_fCLK2_DIV64,&BTCTL // START delay
+            call    #sleep_mood
+            bis.w   #LPM3+GIE,SR
+            jmp     subloop
+line31      cmp     #1,state
+            jnz     line32
+            mov     #line_30,R5
+            call    #lcd_write
+            call    #sleep_mood
+            jmp     subloop
+line32      mov     #line_11,R5
+            call    #lcd_write 
+            jmp     subloop
+line4       cmp     #4,lcd
+            mov     #line_4,R5
+            call    #lcd_write
+
+
+subloop     bic.b   #0xff,&P2IFG
+            bic.b   #0xff,&P1IFG
+            bis.b   #0xff,&P2IE
+            bis.b   #0xff,&P1IE
+            bis.w   #CPUOFF+GIE,SR 
+                
+;------------------------------------------------------------------------------------------ 
+;             rsistor cheack
+;------------------------------------------------------------------------------------------    
+
+stete11      mov.w   #SFE(CSTACK),SP             
+             mov.w   #2,indictor                     // MOD OF SIMPLE TIMER
+             cmp     #1,lcd                        // resistor CHEACK 
+             jnz     stete22
+             mov.w   #1,indictor
+             bis.b   #0x80,&P6DIR
+             bis.b   #0x80,&P6OUT
+             bic     #DAC12AMP_1,&DAC12_1CTL               // DC ON
+             mov.w   #50000,R15     
+             call    #wait
+             mov.w   #2,indictor 
+SetupADC12   bic.w   #ENC,&ADC12CTL0
+             mov.w   #SHT0_2+ADC12ON,&ADC12CTL0           ; Sampling time, ADC12 on
+             mov.w   #SHP+CSTARTADD_3,&ADC12CTL1
+             mov.b   #INCH_3,&ADC12MCTL3                  ;Analog input is A3, VR+=3.3v VR-=0v
+             mov.w   #0x08,&ADC12IE                       ; Enable interrupt
+             bis.w   #ENC,&ADC12CTL0
+             bis.b   #0x08,&P6SEL                        ; P6.3 ADC option select     
+             bis.w   #ADC12SC,&ADC12CTL0 ; Start sampling/conversion
+             bis.w   #CPUOFF+GIE,SR ; LPM0, ADC12_ISR will force exit        //SAMPLE OF VOL
+             call    #Ohm                         
+             call    #make_sringR
+             mov     #print,R5
+             call    #lcd_write 
+             bic.b   #0x80,&P6DIR
+             bic.b   #0x80,&P6OUT
+             bis     #DAC12AMP_1,&DAC12_1CTL               // DC Off
+             mov     #15,counter
+SLEEP1       mov.b   #BTDIV+BT_fCLK2_DIV128,&BTCTL         // START delay
+             call    #sleep_mood
+             mov.w   #1,indictor 
+             bis.w   #LPM3+GIE,SR
+             cmp     #0,counter
+             dec     counter
+             jne     SLEEP1        //  STOP DELAY 0.5 MIN 
+             mov     #0,lcd
+             mov     #0, state
+             jmp     main 
+
+;------------------------------------------------------------------------------------------ 
+;             capacitor cheack
+;------------------------------------------------------------------------------------------    
+
+             
+stete22      cmp     #2,lcd
+             jnz     stete33
+             mov.w   #2,indictor 
+             call    #measure
+             bis.w   #CPUOFF+GIE,SR          ; Hold in LPM0, Enable interrupts
+             call    #readtime  ;reads time from basic time and writes to time  
+             
+             call    #Farad
+             call    #make_sringC
+             mov     #print,R5
+             call    #lcd_write 
+             mov     #15,counter
+SLEEP2       mov.b   #BTDIV+BT_fCLK2_DIV128,&BTCTL // START delay
+             call    #sleep_mood
+             mov.w   #1,indictor 
+             bis.w   #LPM3+GIE,SR
+             dec     counter
+             cmp     #0,counter
+             jne     SLEEP2        //  STOP DELAY 0.5 MIN
+             mov     #0,lcd
+             mov     #0,state
+             jmp    main 
+
+;------------------------------------------------------------------------------------------ 
+;             Inductor cheack
+;------------------------------------------------------------------------------------------ 
+stete33      cmp     #3,lcd
+             jnz     state44
+             bis.b   #0x80,&P6DIR
+             call    #measure
+             mov.w   #2,indictor 
+             bis.w   #CPUOFF+GIE,SR          ; Hold in LPM0, Enable interrupts
+             call    #readtime  ;reads time from basic time and writes to time  
+             call    #Henry
+             
+             call    #make_sringL
+             mov     #print,R5
+             call    #lcd_write 
+             mov     #15,counter
+SLEEP3       mov.b   #BTDIV+BT_fCLK2_DIV128,&BTCTL // START delay
+             call    #sleep_mood
+             mov.w   #1,indictor 
+             bis.w   #LPM3+GIE,SR
+             dec     counter
+             cmp     #0,counter
+             jne    SLEEP3        //  STOP DELAY 0.5 MIN
+             mov    #0,lcd
+             mov    #0,state
+             jmp    Mainloop 
+
+             
+state44      cmp     #4,state
+             mov     #0,state
+             jnz     main
+
+
+;------------------------------------------------------------------------------------------ 
+;               PORT1 Interrupt Service Routine  of SW1=P1.0
+;------------------------------------------------------------------------------------------
+PORT1_ISR    
+             bic.b   #0xff,&P1IE
+             mov     #keypad,R5
+             
+A            mov.b   #0x07,&P10OUT //row 1
+             mov.w  #1000,R15     
+Lp1          dec.w  R15                     
+             jnz    Lp1
+
+             cmp.b   #0xE7,&P10IN   // Á'CHECK 
+             jnz     ONE
+             bic.b   #0xff,&P2IFG
+             mov.b   #65,4(R5)
+             call    #lcd_write
+             mov     #stete11,pc
+             
+             
+ONE          cmp.b   #0x77,&P10IN    //'1'CHECK
+             jnz     TWO
+             mov.b   #49,4(R5)
+             mov     #0,lcd
+             mov     #0,state
+             jmp     fin
+             
+TWO          cmp.b   #0xB7,&P10IN  //'2'CHECK
+             jnz     T3
+             mov.b   #50,4(R5)
+             mov     #1,lcd
+             mov     #0,state
+             jmp     fin 
+              
+T3           cmp.b   #0xD7,&P10IN   //'3'CHECK
+             jnz     F4
+             mov.b   #51,4(R5)
+             mov     #2,lcd
+             mov     #0,state
+             jmp     fin 
+             
+F4           mov.b   #0x0B,&P10OUT //row 2
+             mov.w  #280,R15     
+Lp2          dec.w  R15                     
+             jnz    Lp2
+             
+             cmp.b   #0x7B,&P10IN  //'4'CHECK
+             jnz     F5
+             mov.b   #52,4(R5)
+             mov     #3,lcd
+             mov     #0,state
+             jmp     fin 
+             
+F5           cmp.b   #0xBB,&P10IN //'5'CHECK
+             jnz     A
+             mov.b   #53,4(R5)
+             mov     #4,lcd
+             mov     #0,state
+             jmp     fin 
+             
+             
+          
+             
+fin          mov.b   #0x00,&P10OUT
+             bic.b   #0xff,&P1IFG
+             call    #lcd_write
+             mov    #Mainloop,pc             ; interrupt hapened from another source
+        
+            
+;------------------------------------------------------------------------------------------ 
+;               PORT2 Interrupt Service Routine  of SW1=P1.0
+;------------------------------------------------------------------------------------------
+PORT2_ISR    mov.w  #280,R15     
+L2           dec.w  R15                     
+             jnz    L2
+             
+             bit.b  #0x01,&P2IFG   ;check if P2.4 is pushed
+             jnz    P2_0 
+             
+             bit.b  #0x10,&P2IFG   ;check if P2.4 is pushed
+             jnz    P2_4 
+             bit.b  #0x20,&P2IFG   ;check if P2.5 is pushed
+             jnz    P2_5
+             bit.b  #0x40,&P2IFG   ;check if P2.6 is pushed
+             jnz    P2_6 
+             bit.b  #0x80,&P2IFG   ;check if P2.7 is pushed
+             jnz    P2_7 
+             
+             reti                  ; interrupt hapened from another source
+  
+   // lcd mood change
+P2_0         bic.b   #0xff,&P2IFG 
+             mov    #stete11,pc
+
+  // lcd mood change
+P2_4         bic.b   #0xff,&P2IFG 
+             cmp     #2,state
+             jnz     L41
+             mov     #0,state 
+             jmp     L5
+L41          add     #1,state  // rigth 
+             jmp    L5
+             
+P2_5         bic.b  #0xff,&P2IFG 
+             cmp     #0,state
+             jnz     L42
+             mov     #2,state 
+             jmp     L5
+L42          sub     #1,state //left 
+             jmp   L5
+             
+
+             
+P2_6         bic.b   #0xff,&P2IFG 
+             cmp     #0,lcd
+             jnz     L51
+             mov     #4,lcd  // up
+             jmp     L5
+L51           sub     #1,lcd  // up
+              mov     #0,state
+             jmp     L5
+             
+P2_7         bic.b   #0xff,&P2IFG
+             cmp     #4,lcd
+             jnz     L52
+             mov     #0,lcd  // up
+             jmp     L5
+L52          add     #1,lcd  // down 
+             mov     #0,state
+
+             
+L5           mov.w  #50000,R15     
+L55          dec.w  R15                     
+             jnz    L55 
+             mov    #Mainloop,pc
+
+
+;------------------------------------------------------------------------------
+Basic_Timer_ISR;  // Basic Timer Interrupt Service Routine
+;------------------------------------------------------------------------------
+           cmp     #1,indictor
+           jne     state0
+           bic.b   #BTIE,&IE2
+           bic.w   #LPM3,0(sp)
+           reti
+
+state0     add #1,counter
+           cmp #15,counter
+           jne  L1
+           mov #0,counter
+L1         reti
+
+;------------------------------------------------------------------------------------------ 
+;             help func for L AND C // maybe move to functions file
+;------------------------------------------------------------------------------------------            
+measure      bic.w   #ENC,&ADC12CTL0
+             cmp.w   #2,lcd
+             jnz     inductor
+             mov.w   #2588,two_thirds
+             jmp     prepare
+inductor     mov.w   #275,two_thirds
+
+prepare      mov.w   #SHT0_3+MSC+ADC12ON,&ADC12CTL0
+             mov.w   #SHP+CONSEQ_2+CSTARTADD_3+ADC12SSEL_3,&ADC12CTL1       ; Use sampling timer, set mode, SMCLK for 2^20 divided by 2^5
+             mov.b   #INCH_3,&ADC12MCTL3                        ; Analog input is A3, VR+=3.3v  VR-=0v
+             mov.w   #08h,&ADC12IE                                  ; Enable ADC12IFG.3 for ADC12MEM3
+             bis.w   #ENC,&ADC12CTL0         ; Enable conversions
+
+cleartimer   bis.w   #ADC12SC,&ADC12CTL0     ;start measure with ADC12
+             bis.w   #TBCLR,&TBCTL
+             mov.w   #CM_3+CCIS_2+CAP+SCS, &TBCCTL0 ;channel 0 of timer B set to : capture mode, rising and falling edge, sync, input logic 1
+             mov.w   #TBSSEL_1+MC_2,&TBCTL    ;start counting in continues mode, ACLK 2^15 , time to measure ratio 1:1
+             bic     #DAC12AMP_1, &DAC12_1CTL  ;DAC1 ON
+             bis.b   #0x80,&P6OUT
+           
+             ret
+             
+readtime     push      R10
+             mov.w     &TBCCR0,R10
+             mov.w     R10,time
+             bis       #DAC12AMP_1, &DAC12_1CTL  ;DAC1 0FF
+             bic.w     #ADC12SC,&ADC12CTL0
+             bic.b     #0x80,&P6OUT
+             bic.b     #0x80,&P6DIR
+           
+             POP       R10
+             ret   
+
+;-------------------------------------------------------------------------------
+ADC12_ISR   ; Interrupt Service Routine for ADC12
+;-------------------------------------------------------------------------------
+PB1         cmp     #1,lcd
+            jnz     CheckV
+            mov.w   &ADC12MEM3,sample      ; Move result, IFG is reset
+            bic.w   #CPUOFF,0(SP)               ; Exit LPM0 on reti
+            jmp     exit1
+
+CheckV      cmp     #2,lcd
+            jz      start
+            cmp     #3,lcd
+            jnz     exit1 
+start       cmp.w   two_thirds,&ADC12MEM3
+            jn      exit1                  ;check if Voltage has passed the 2/3 mark
+            
+readfinish  bis.w   #CCIS_3, &TBCCTL0 ;CCIS=3.3 triggers capture to TBCCR6
+            bis.w   #MC_0,&TBCTL            ;stop timer
+            bic.w   #ENC+ADC12ON,&ADC12CTL0         ; Disable conversions
+            bic.w   #CPUOFF+GIE,0(SP)               ; Exit LPM0 on reti
+      
+
+        
+exit1       reti               ;
+;-------------------------------------------------------------------------------------------------------------------------------------------
+            COMMON  INTVEC                  ; Interrupt Vectors-Begins a common segment with name of INTVEC 
+;-------------------------------------------------------------------------------------------------------------------------------------------
+            ORG     PORT1_VECTOR            ;PORT1 Interrupt Vector
+            DW      PORT1_ISR
+            ORG     PORT2_VECTOR            ;PORT2 Interrupt Vector
+            DW      PORT2_ISR
+            ORG     ADC12_VECTOR            ; ADC12 Vector
+            DW      ADC12_ISR
+            ORG     BASICTIMER_VECTOR       ; MSP430 Basic Timer Interrupt Vector
+            DW      Basic_Timer_ISR       
+            ORG     RESET_VECTOR            ; MSP430 RESET Vector
+            DW      main                   
+            END

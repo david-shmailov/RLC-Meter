@@ -1,0 +1,452 @@
+#include  <msp430xG46x.h>
+
+              MODULE      lcd
+              PUBLIC      lcd_strobe,lcd_cmd,lcd_data,lcd_write,wait,sleep_mood, make_sringR,make_sringC,make_sringL
+              EXTERN      cmd,resistor,time,sample,display0,display1, print,Rfinel1 ,Rfinel2, Vr,DIV16bit ,change_num,num,mult,Cfinel2,Cfinel1,Lfinel1,Lfinel2
+              RSEG        CODE
+;----------------------------------------------------------------------------------------------
+
+sleep_mood   clr.b   &BTCNT1
+             clr.b   &BTCNT2
+             bis.b   #BTIE,&IE2
+             ret              
+               
+;----------------------------------------------------------------------------------------------
+
+lcd_strobe   bis.b  #0x04,&P5OUT
+             NOP
+             NOP
+             bic.b  #0x04,&P5OUT
+             ret
+;----------------------------------------------------------------------------------------------
+lcd_cmd    mov.w  #52483,R15 
+wa          dec.w  R15                     
+            jnz   wa
+           mov.b  cmd,&P4OUT
+           call   #lcd_strobe
+           ret 
+;----------------------------------------------------------------------------------------------
+lcd_data   mov.w  #52483,R15 
+           call   #wait
+           mov.b  #0x00,&P4OUT
+           bis.b  #0x01,&P5OUT
+           mov.b  R7,&P4OUT
+           call   #lcd_strobe
+           bic.b  #0x01,&P5OUT
+           ret 
+           
+           
+;----------------------------------------------------------------------------------------------
+lcd_write  CLR R8
+           CLR R7 
+           mov.b  #0x01,cmd
+           call   #lcd_cmd 
+           mov.b  #0x02,cmd
+           call   #lcd_cmd
+next_chear mov.b    @R5,R7
+           INC    R5
+           INC    R8
+           cmp    #16,R8
+           jnz    next
+           mov.b  #0xc0,cmd
+           call   #lcd_cmd
+next       cmp    #0,R7
+           jz     fin
+           call   #lcd_data
+
+           jmp    next_chear 
+fin        ret            
+           
+;----------------------------------------------------------------------------------------------
+wait        dec.w  R15                     
+            jnz   wait
+            ret
+
+            
+;----------------------------------------------------------------------------------------------
+make_sringR push     R5
+            push     R6
+            push     R7
+            push     R8
+            push     R9
+            
+            mov      #print, R5
+            mov      R5,R7
+            mov      #Rfinel1,R6
+            mov      #2,R8
+liner1      mov.b    @R6,0(R5)
+            INC      R5
+            INC      R6
+            dec      R8
+            cmp      #0,R8
+            jnz      liner1
+            
+          
+            call     #change_num
+            mov      #num,R6
+            mov      #num,R10
+            add      #15,R6
+            add      #2,R10
+num1r       cmp.b    #32,0(R6)
+            jnz      numl11
+            dec      R6
+            jmp      num1r
+            
+numl11      mov.b    @R6,R9
+            cmp      #0,R9
+            JNZ      NUM11111
+            mov.b    #32,0(R5)
+            jmp      nex
+NUM11111    mov.b    R9,0(R5)       
+            INC      R5
+nex         dec      R6
+            cmp      R10,R6
+            JNZ      notdot
+            mov.b    #46,0(R5)
+            INC      R5
+notdot      cmp      #num,R6
+            jge      num1r
+            
+            mov.b   #79,12(R7)
+            mov.b   #104,13(R7) 
+            mov.b   #109,14(R7)
+            
+            add      #15,R7
+            mov      R7,R5
+            
+            mov      #Rfinel2,R6
+            mov      #3,R8
+liner2      mov.b    @R6,0(R5)
+            INC      R5
+            INC      R6
+            dec      R8
+            cmp      #0,R8
+            jnz      liner2
+            
+           
+            mov      #Vr,R8
+            mov.w    0(R8),display0
+            call     #change_num
+            mov      #num,R6
+            add      #15,R6
+            mov      #num, R10
+            add      #2,R10
+num2r       cmp.b    #32,0(R6)
+            jnz      num222
+            dec      R6
+            cmp.b    R10,R6
+            jnz      noneedzero
+             mov.b   #48,0(R5)
+            INC      R5
+            mov.b    #46,0(R5)
+            INC      R5
+            mov.b    #48,0(R5)
+            INC      R5
+noneedzero  jmp      num2r
+            
+num222      mov.b    @R6,R9
+            cmp      #0,R9
+            JNZ      NUM22222
+            mov.b    #32,0(R5)
+            jmp      nex22
+NUM22222    mov.b    R9,0(R5) 
+          
+            INC      R5
+nex22       dec      R6
+            cmp      R10,R6
+            JNZ      L222222
+            cmp.b    #32,0(R5)
+            jnz      noaddzreo
+            mov.b    #48,0(R5)
+            INC      R5
+noaddzreo   mov.b    #46,0(R5)
+            INC      R5
+L222222     cmp      #num,R6
+            jge      num2r
+            
+            
+            mov.b   #86,14(R7) 
+
+            
+         
+            POP     R9
+            POP     R8
+            pop     R7
+            pop     R6
+            pop     R5
+            ret
+
+            
+;----------------------------------------------------------------------------------------------
+  
+make_sringC push     R5
+            push     R6
+            push     R7
+            push     R8
+            push     R9
+            push     R11
+            
+            mov      #print, R5
+            mov      R5,R7
+            mov      #Cfinel1,R6
+            mov      #2,R8
+liner1c      mov.b    @R6,0(R5)
+            INC      R5
+            INC      R6
+            dec      R8
+            cmp      #0,R8
+            jnz      liner1c
+            
+          
+            call     #change_num
+            mov      #num,R6
+            add      #15,R6
+            mov      #num, R10
+            add      #2,R10
+            mov      R5,R11
+num1rc      cmp.b    #0x20,0(R6)
+            jnz      numl11c
+            dec      R6
+            jmp      num1rc
+            
+          
+numl11c     mov.b    @R6,R9
+            cmp      #0,R9
+            JNZ      NUM11111c
+            mov.b    #32,0(R5)
+            jmp      nexc
+NUM11111c   mov.b    R9,0(R5)       
+            INC      R5
+nexc        dec     R6
+            cmp      R10,R6
+            JNZ      Lc1
+            cmp      R5,R11
+            jnz      noaddzreoC
+            mov.b    #48,0(R5)
+            INC      R5
+noaddzreoC  mov.b    #46,0(R5)
+            INC      R5
+Lc1         cmp      #num,R6
+            jge      num1rc
+            
+            mov.b   #117,13(R7)
+            mov.b   #70,14(R7)
+            
+            add      #15,R7
+            mov      R7,R5
+            
+            mov      #Cfinel2,R6
+            mov      #4,R8
+liner2c     mov.b    @R6,0(R5)
+            INC      R5
+            INC      R6
+            dec      R8
+            cmp      #0,R8
+            jge      liner2c
+            
+ ;time function printing-------------------------------------------------------------
+            push     R4
+            push     R5
+            push     R6
+            push     R7
+            push     R10
+            push     R11
+            push     R12
+            push     R13
+            push     R14
+            push     R15
+ 
+            mov.w    &TBCCR0,R4     
+            mov.w    #125,R5
+            call    #mult   ;time*125
+            mov.w   R6,R14
+            mov.w   R7,R15
+            mov.w   R7,R4
+            mov.w   #16,R5
+            call    #mult    ;R7*16
+            mov.w   R6,display0
+            mov.w   R14,R11
+            mov.w   #4095,R10
+            call    #DIV16bit  ;LSB/4095
+            add.w   R12,display0     ; display0= time*125/4095
+            
+            pop     R15
+            pop     R14
+            pop     R13
+            pop     R12
+            pop     R11
+            pop     R10
+            pop     R7
+            pop     R6
+            pop     R5
+            pop     R4
+;time function printing-------------------------------------------------------------
+            call     #change_num
+            mov      #num,R6
+            add      #6,R6
+num1rc2     cmp.b    #32,0(R6)
+            jnz      num22222c
+            dec      R6
+            jmp      num1rc2
+            
+num22222c   mov.b    @R6,R9
+            cmp      #0,R9
+            JNZ      num222c
+            mov.b    #32,0(R5)
+            jmp      nexc2
+num222c     mov.b    R9,0(R5)       
+            INC      R5
+nexc2       dec      R6
+            cmp      #num,R6
+            jge      num1rc2
+            
+            mov.b   #109,12(R7)
+            mov.b   #83,13(R7)
+            mov.b   #101,14(R7)
+            mov.b   #99,15(R7)
+
+            POP     R11
+            POP     R9
+            POP     R8
+            pop     R7
+            pop     R6
+            pop     R5
+            ret
+
+            
+;----------------------------------------------------------------------------------------------
+make_sringL push     R5
+            push     R6
+            push     R7
+            push     R8
+            push     R9
+            
+            mov      #print, R5
+            mov      R5,R7
+            mov      #Lfinel1,R6
+            mov      #2,R8
+liner1L     mov.b    @R6,0(R5)
+            INC      R5
+            INC      R6
+            dec      R8
+            cmp      #0,R8
+            jnz      liner1L
+            
+          
+            call     #change_num
+            mov      #num,R6
+            add      #15,R6
+            mov      #num, R10
+            add      #2,R10
+num1rL      cmp.b    #0x20,0(R6)
+            jnz      numl11L
+            dec      R6
+            jmp      num1rL
+            
+numl11L     mov.b    @R6,R9
+            cmp      #0,R9
+            JNZ      NUM11111L
+            mov.b    #32,0(R5)
+            jmp      nexL
+NUM11111L   mov.b    R9,0(R5)       
+            INC      R5
+nexL         dec     R6
+            cmp      R10,R6
+            JNZ      LL1
+            cmp.b    #32,0(R5)
+            jnz      noaddzreoL
+            mov.b    #48,0(R5)
+            INC      R5 
+noaddzreoL  mov.b    #46,0(R5)
+            INC      R5
+LL1         cmp      #num,R6
+            jge      num1rL
+            
+            mov.b   #109,13(R7)
+            mov.b   #72,14(R7)
+            
+            add      #15,R7
+            mov      R7,R5
+            
+            mov      #Lfinel2,R6
+            mov      #4,R8
+liner2L     mov.b    @R6,0(R5)
+            INC      R5
+            INC      R6
+            dec      R8
+            cmp      #0,R8
+            jge      liner2L
+            
+;time function printing-------------------------------------------------------------
+            push     R4
+            push     R5
+            push     R6
+            push     R7
+            push     R10
+            push     R11
+            push     R12
+            push     R13
+            push     R14
+            push     R15
+ 
+            mov.w    &TBCCR0,R4     
+            mov.w    #125,R5
+            call    #mult   ;time*125
+            mov.w   R6,R14
+            mov.w   R7,R15
+            mov.w   R7,R4
+            mov.w   #16,R5
+            call    #mult    ;R7*16
+            mov.w   R6,display0
+            mov.w   R14,R11
+            mov.w   #4095,R10
+            call    #DIV16bit  ;LSB/4095
+            add.w   R12,display0     ; display0= time*125/4095
+            
+            pop     R15
+            pop     R14
+            pop     R13
+            pop     R12
+            pop     R11
+            pop     R10
+            pop     R7
+            pop     R6
+            pop     R5
+            pop     R4
+;time function printing-------------------------------------------------------------            
+            call     #change_num
+            mov      #num,R6
+            add      #6,R6
+num1rL2     cmp.b    #32,0(R6)
+            jnz      num22222L
+            dec      R6
+            jmp      num1rL2
+            
+num22222L   mov.b    @R6,R9
+            cmp      #0,R9
+            JNZ      num222L
+            mov.b    #32,0(R5)
+            jmp      nexL2
+num222L     mov.b    R9,0(R5)       
+            INC      R5
+nexL2       dec     R6
+            cmp      #num,R6
+            jge      num1rL2
+            
+            mov.b   #117,12(R7)
+            mov.b   #83,13(R7)
+            mov.b   #101,14(R7)
+            mov.b   #99,15(R7)
+
+         
+            POP     R9
+            POP     R8
+            pop     R7
+            pop     R6
+            pop     R5
+            ret
+
+            
+  
+            
+            END

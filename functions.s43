@@ -1,0 +1,258 @@
+#include  <msp430xG46x.h>
+
+              MODULE      functions
+              PUBLIC      Farad,Henry,Ohm,change_num,mult,DIV16bit
+              EXTERN      resistor,time,sample,display0,display1,Vr,num,acc,Vdelta
+              RSEG        CODE
+              
+;----------------------------------------------------------------------------------------------
+Farad         push R4
+              push R5
+              push R6
+              push R7
+              push R10
+              push R11
+              push R12
+              push R13
+              
+              mov.w  #0,acc
+              bit.w  #TBIFG, &TBCTL
+              jz     normal
+              ;mov.w  #6226,acc          ;check if time overflow happend
+              
+normal        mov.w  &TBCCR0,R4
+              sub    #459,R4
+              mov.w  #125,R5
+              call   #mult      ;time*125
+              mov.w  R6,R11
+              mov.w  #512,R10
+              call   #DIV16bit   ;R6/2^9 > R12
+              add.w  R12,acc
+              mov.w  R7,R4
+              mov.w  #128,R5
+              call   #mult       ;R7*128 should not be more then 16bits
+              add.w  R6,acc  
+              
+              mov    acc,display0
+              
+              pop R13         
+              pop R12
+              pop R11
+              pop R10
+              pop R7
+              pop R6
+              pop R5
+              pop R4
+              ret
+;---------------------------------------------------------------------------------------------- 
+Henry         push R4
+              push R5
+              push R6
+              push R7
+              push R10
+              push R11
+              push R12
+              push R13
+              
+              mov.w  &TBCCR0,R5  ;max value cant be more than 21
+              ;mov.w  time,R5 ;debugging
+              mov.w  #3082,R4
+              call  #mult
+              mov   R6,display0
+              
+              pop R13         
+              pop R12
+              pop R11
+              pop R10
+              pop R7
+              pop R6
+              pop R5
+              pop R4
+              ret
+;---------------------------------------------------------------------------------------------- 
+Ohm           push R4
+              push R5
+              push R6
+              push R7
+              push R8
+              push R9
+              push R10
+              push R11
+              push R12
+              push R13
+              push R14
+              push R15
+              
+              mov     sample,R4
+              sub     #14,R4
+              mov     #3300,R5
+              call    #mult   ;ADC*3300
+              mov.w   R6,R14
+              mov.w   R7,R15
+              mov.w   R7,R4
+              mov.w   #16,R5
+              call    #mult    ;R7*16
+              mov.w   R6,Vr
+              mov.w   R14,R11
+              mov.w   #4095,R10
+              call    #DIV16bit  ;LSB/4095
+              add.w   R12,Vr     ; Vr= Vm*1000
+              
+              mov.w   #3500,Vdelta
+              sub.w   Vr,Vdelta  ; Vdelta = 1000*(3.5-Vm)
+              
+              
+              mov.w   #10000,R11
+              mov.w   Vdelta,R10
+              call    #DIV16bit      ;10000/Vdelta
+              mov.w   R13,R15
+              mov.w   R12,R4
+              mov.w   #10,R5
+              call    #mult      ;R12*10 <2^16 assuming
+              mov.w   R6,R4
+              mov.w   Vr,R5
+              call    #mult      ;R12*10*Vr    <2^16 assuming
+              mov.w   R6,display0     ;start adding the result
+              mov.w   R15,R4
+              mov.w   #10,R5
+              call    #mult        ;R13*10   <2^16 assuming
+              mov.w   R6,R11
+              mov.w   Vdelta,R10
+              call    #DIV16bit     ;R13*10/Vdelta
+              mov.w   Vr,R4
+              mov.w   R12,R5
+              call    #mult         ;Vr*R12'
+              add.w   R6,display0
+              mov.w   R13,R5
+              call    #mult         ;Vr*R13'
+              mov.w   R6,R11
+              call    #DIV16bit     ;Vr*R13'/Vdelta
+              add.w   R12,display0
+              
+              mov.w   Vr,R11
+              mov.w   #10,R10
+              call    #DIV16bit  ;do Vr/10 = Vm*1000/10 for display
+              mov.w   R12,Vr
+              
+         
+              pop R15
+              pop R14
+              pop R13
+              pop R12
+              pop R11
+              pop R10
+              pop R9
+              pop R8
+              pop R7
+              pop R6
+              pop R5
+              pop R4
+              ret
+
+;---------------------------------------------------------------
+Add_R12toR6R7
+loop         dec R12
+             jn  exit
+             inc R6
+             adc R7
+             jmp loop
+exit         ret
+              
+;---------------------------------------------------------------
+
+change_num    push R10
+              push R11
+              push R12
+              push R13
+              push R9
+              call      #clr_num
+              mov       #num,R9
+              mov       #10,R10
+              mov.w     #display0,R13
+              mov       0(R13),R12
+nextnum       mov       R12,R11
+              call      #DIV16bit 
+              add       #48,R13
+              mov       R13,0(R9)
+              INCD      R9 
+              cmp       #0,R12
+              jnz        nextnum
+              
+              
+              pop R9
+              pop R13
+              pop R12
+              pop R11
+              pop R10
+              ret
+;---------------------------------------------------------------
+clr_num     push R10
+            mov   #num,R10
+            add   #15,R10
+L122        mov.b #32,0(R10)
+            DEC   R10
+            cmp   #num,R10
+            jnz   L122
+            
+             pop R10
+             ret 
+
+
+;the result is available 3 MCLK cycles after the operand &OP2 loaded
+;---------------------------------------------------------------
+;          MACRO 16x16 Unsigned Multiplier:  R7#R6 = R4*R5
+;---------------------------------------------------------------
+mult       push R15
+           mov.w   R4,&MPY             ; Load first operand-unsigned mult
+           mov.w   R5,&OP2             ; Load second operand 
+           mov     #3,R15                ; wait for result
+wait       dec     R15
+           jnz     wait
+           mov.w   &RESLO,R6
+           mov.w   &RESHI,R7
+           pop R15
+           ret
+
+;-------------------------------------------------------------------------------
+;      MACRO 16x16 Unsigned Divider: 
+;      R12 = R11/R10 , Remainder=Divided/Divisor
+;-------------------------------------------------------------------------------
+DIV16bit        push R4
+                push R5
+                push R6
+                push R7
+                push R8
+                push R9
+                 
+                mov     #17,R9
+                clr     R8                ; Quotient register
+                mov.w   R11,R4        ; Devided registers is R5,R4
+                clr     R5
+                mov.w   R10,R6        ; Divisor registers is R6
+                
+L3              rla     R8
+L1              dec     R9
+                jz      L2
+                rla     R4
+                rlc     R5
+                cmp     R6,R5
+                jlo     L3
+                sub     R6,R5
+                setc
+                rlc     R8
+                jmp     L1
+                
+L2              mov.w   R8,R12
+                mov.w   R5,R13
+                
+                pop R9
+                pop R8
+                pop R7
+                pop R6
+                pop R5
+                pop R4
+                
+                ret 
+
+              
+              END
